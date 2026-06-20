@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react'
-import { waakyeApi } from '../api/waakyeApi'
+import waakyeApi from '../api/waakyeApi'  // ← Changed from { waakyeApi }
 import {
   TrendingUp,
   TrendingDown,
@@ -13,7 +13,9 @@ import {
   Store,
   BarChart3,
   Zap,
-  Coffee
+  Coffee,
+  ChevronDown,
+  ChevronUp
 } from 'lucide-react'
 import {
   BarChart,
@@ -24,9 +26,6 @@ import {
   Tooltip,
   Legend,
   ResponsiveContainer,
-  ScatterChart,
-  Scatter,
-  ZAxis,
   ComposedChart,
   Area
 } from 'recharts'
@@ -35,12 +34,14 @@ const GrowthPage = () => {
   const [metrics, setMetrics] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
+  const [expandedBranches, setExpandedBranches] = useState([])
 
   const fetchData = async () => {
     setLoading(true)
     setError(null)
     try {
       const response = await waakyeApi.getGrowthMetrics()
+      console.log('Growth Metrics Response:', response.data)
       setMetrics(response.data || [])
     } catch (err) {
       setError('Failed to load growth metrics')
@@ -53,6 +54,20 @@ const GrowthPage = () => {
   useEffect(() => {
     fetchData()
   }, [])
+
+  // Auto-refresh every 30 seconds
+  useEffect(() => {
+    const interval = setInterval(fetchData, 30000)
+    return () => clearInterval(interval)
+  }, [])
+
+  const toggleBranch = (branchId) => {
+    setExpandedBranches(prev =>
+      prev.includes(branchId)
+        ? prev.filter(id => id !== branchId)
+        : [...prev, branchId]
+    )
+  }
 
   if (loading) {
     return <div style={{ padding: 48, textAlign: 'center' }}>Loading growth metrics...</div>
@@ -77,6 +92,7 @@ const GrowthPage = () => {
   const opportunities = metrics
     .map(m => ({
       branch: m.branch,
+      branch_id: m.branch_id,
       revenue_per_unit: m.revenue_per_unit || 0,
       inventory_health: m.inventory_health || 0,
       potential: ((m.revenue_per_unit || 0) * (m.inventory_health || 0)) / 100
@@ -86,8 +102,11 @@ const GrowthPage = () => {
   // Branch performance ratings
   const performanceData = metrics.map(m => ({
     branch: m.branch,
+    branch_id: m.branch_id,
     revenue: Math.round(m.revenue || 0),
     sales: Math.round(m.sales_units || 0),
+    inventory: Math.round(m.inventory_units || 0),
+    kitchen: Math.round(m.kitchen_units || 0),
     efficiency: Math.round(((m.revenue_per_unit || 0) / 50) * 100),
     health: Math.round(Math.min((m.inventory_health || 0) * 5, 100))
   }))
@@ -97,7 +116,9 @@ const GrowthPage = () => {
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 }}>
         <div>
           <h2 style={{ fontSize: 24, fontWeight: 700, color: '#2d3748' }}>🚀 Growth & Scalability</h2>
-          <p style={{ color: '#718096' }}>Insights and opportunities for business expansion</p>
+          <p style={{ color: '#718096' }}>
+            {metrics.length} branches • Total Revenue: GHS {totalRevenue.toFixed(2)}
+          </p>
         </div>
         <button className="btn btn-outline" onClick={fetchData}>
           <RefreshCw size={16} />
@@ -135,140 +156,91 @@ const GrowthPage = () => {
 
       {/* Branch Performance Chart */}
       <div className="card" style={{ marginBottom: 24 }}>
-        <h3 className="card-title">Branch Performance Matrix</h3>
-        <div style={{ height: 300 }}>
+        <h3 className="card-title">All Branches Performance</h3>
+        <div style={{ height: 350 }}>
           <ResponsiveContainer width="100%" height="100%">
-            <BarChart data={performanceData}>
+            <ComposedChart data={performanceData}>
               <CartesianGrid strokeDasharray="3 3" />
               <XAxis dataKey="branch" />
-              <YAxis />
+              <YAxis yAxisId="left" />
+              <YAxis yAxisId="right" orientation="right" />
               <Tooltip />
               <Legend />
-              <Bar dataKey="revenue" fill="#48bb78" name="Revenue (GHS)" />
-              <Bar dataKey="sales" fill="#4299e1" name="Sales Units" />
-              <Bar dataKey="efficiency" fill="#ed8936" name="Efficiency %" />
-            </BarChart>
+              <Bar yAxisId="left" dataKey="revenue" fill="#48bb78" name="Revenue (GHS)" />
+              <Bar yAxisId="left" dataKey="sales" fill="#4299e1" name="Sales Units" />
+              <Area yAxisId="right" type="monotone" dataKey="health" fill="#ed8936" stroke="#ed8936" name="Health %" />
+            </ComposedChart>
           </ResponsiveContainer>
         </div>
       </div>
 
-      {/* Growth Opportunities */}
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 24, marginBottom: 24 }}>
-        <div className="card">
-          <h3 className="card-title">Growth Opportunities</h3>
-          <div style={{ maxHeight: 300, overflowY: 'auto' }}>
-            {opportunities.map((op, index) => (
-              <div
-                key={index}
-                style={{
-                  padding: '12px 16px',
-                  borderBottom: '1px solid #edf2f7',
-                  display: 'flex',
-                  justifyContent: 'space-between',
-                  alignItems: 'center'
-                }}
-              >
-                <div>
-                  <div style={{ fontWeight: 600, color: '#2d3748' }}>{op.branch}</div>
-                  <div style={{ fontSize: 13, color: '#718096' }}>
-                    Revenue/Unit: GHS {op.revenue_per_unit?.toFixed(2) || '0.00'}
-                  </div>
-                </div>
-                <div style={{ textAlign: 'right' }}>
-                  <div style={{ 
-                    fontSize: 20, 
-                    fontWeight: 700,
-                    color: op.potential > 50 ? '#48bb78' : '#ed8936'
-                  }}>
-                    {op.potential.toFixed(1)}
-                  </div>
-                  <div style={{ fontSize: 11, color: '#a0aec0' }}>Growth Potential</div>
+      {/* Branch Cards */}
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 16, marginBottom: 24 }}>
+        {metrics.map((branch, index) => (
+          <div key={index} className="card" style={{ cursor: 'pointer' }} onClick={() => toggleBranch(branch.branch_id)}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'start' }}>
+              <div>
+                <h4 style={{ fontSize: 16, fontWeight: 600, color: '#2d3748' }}>{branch.branch}</h4>
+                <div style={{ fontSize: 13, color: '#718096' }}>
+                  Revenue: GHS {branch.revenue?.toFixed(2) || '0.00'}
                 </div>
               </div>
-            ))}
-          </div>
-        </div>
-
-        <div className="card">
-          <h3 className="card-title">📈 Scalability Insights</h3>
-          <div style={{ padding: 16 }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '12px 0', borderBottom: '1px solid #edf2f7' }}>
-              <Rocket size={24} color="#48bb78" />
-              <div>
-                <div style={{ fontWeight: 600 }}>Top Performer</div>
-                <div style={{ fontSize: 14, color: '#4a5568' }}>
-                  {metrics.length > 0 ? metrics.reduce((a, b) => (a.revenue || 0) > (b.revenue || 0) ? a : b)?.branch : 'N/A'}
-                </div>
+              <div style={{ 
+                padding: '4px 12px', 
+                borderRadius: 20, 
+                fontSize: 12, 
+                fontWeight: 600,
+                background: (branch.inventory_health || 0) > 10 ? '#f0fff4' : '#fff5f5',
+                color: (branch.inventory_health || 0) > 10 ? '#276749' : '#c53030'
+              }}>
+                {(branch.inventory_health || 0).toFixed(1)}
               </div>
             </div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '12px 0', borderBottom: '1px solid #edf2f7' }}>
-              <Zap size={24} color="#ed8936" />
-              <div>
-                <div style={{ fontWeight: 600 }}>Growth Opportunity</div>
-                <div style={{ fontSize: 14, color: '#4a5568' }}>
-                  {opportunities.length > 0 ? opportunities[0]?.branch : 'N/A'}
-                  <span style={{ color: '#48bb78', marginLeft: 8 }}>
-                    (+{opportunities[0]?.potential?.toFixed(1)}% potential)
-                  </span>
+            
+            {expandedBranches.includes(branch.branch_id) && (
+              <div style={{ marginTop: 12, paddingTop: 12, borderTop: '1px solid #edf2f7' }}>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, fontSize: 13 }}>
+                  <div><span style={{ color: '#718096' }}>Sales Units:</span> {Math.round(branch.sales_units || 0)}</div>
+                  <div><span style={{ color: '#718096' }}>Inventory:</span> {Math.round(branch.inventory_units || 0)}</div>
+                  <div><span style={{ color: '#718096' }}>Kitchen Stock:</span> {Math.round(branch.kitchen_units || 0)}</div>
+                  <div><span style={{ color: '#718096' }}>Revenue/Unit:</span> GHS {branch.revenue_per_unit?.toFixed(2) || '0.00'}</div>
                 </div>
               </div>
-            </div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '12px 0', borderBottom: '1px solid #edf2f7' }}>
-              <Store size={24} color="#4299e1" />
-              <div>
-                <div style={{ fontWeight: 600 }}>Best Inventory Health</div>
-                <div style={{ fontSize: 14, color: '#4a5568' }}>
-                  {metrics.length > 0 ? metrics.reduce((a, b) => (a.inventory_health || 0) > (b.inventory_health || 0) ? a : b)?.branch : 'N/A'}
-                  <span style={{ color: '#48bb78', marginLeft: 8 }}>
-                    ({metrics.reduce((a, b) => Math.max(a, b.inventory_health || 0), 0).toFixed(1)})
-                  </span>
-                </div>
-              </div>
-            </div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '12px 0' }}>
-              <Coffee size={24} color="#9f7aea" />
-              <div>
-                <div style={{ fontWeight: 600 }}>Revenue Efficiency</div>
-                <div style={{ fontSize: 14, color: '#4a5568' }}>
-                  Best Revenue/Unit: GHS {Math.max(...metrics.map(m => m.revenue_per_unit || 0)).toFixed(2)}
-                </div>
-              </div>
+            )}
+            <div style={{ marginTop: 8, fontSize: 12, color: '#a0aec0' }}>
+              {expandedBranches.includes(branch.branch_id) ? 'Tap to collapse' : 'Tap to expand'}
             </div>
           </div>
-        </div>
+        ))}
       </div>
 
-      {/* Expansion Recommendations */}
+      {/* Growth Opportunities */}
       <div className="card">
-        <h3 className="card-title">📋 Expansion Recommendations</h3>
+        <h3 className="card-title">📈 Growth Opportunities by Branch</h3>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 16 }}>
-          <div style={{ padding: 16, background: '#f0fff4', borderRadius: 8, border: '1px solid #c6f6d5' }}>
-            <div style={{ fontWeight: 700, color: '#276749' }}>📍 Priority 1</div>
-            <div style={{ marginTop: 8, fontSize: 14, color: '#2d3748' }}>
-              <strong>{opportunities.length > 0 ? opportunities[0]?.branch : 'N/A'}</strong>
-              <p style={{ fontSize: 13, color: '#4a5568', marginTop: 4 }}>
-                Highest growth potential. Consider expanding operations or opening a new location nearby.
-              </p>
+          {opportunities.map((op, index) => (
+            <div key={index} style={{ 
+              padding: 16, 
+              background: index === 0 ? '#f0fff4' : index === 1 ? '#ebf8ff' : '#f7fafc',
+              borderRadius: 8,
+              border: index === 0 ? '2px solid #48bb78' : '1px solid #e2e8f0'
+            }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <span style={{ fontWeight: 600, color: '#2d3748' }}>{op.branch}</span>
+                {index === 0 && <Rocket size={16} color="#48bb78" />}
+                {index === 1 && <Target size={16} color="#4299e1" />}
+              </div>
+              <div style={{ marginTop: 8, fontSize: 14, color: '#4a5568' }}>
+                Revenue/Unit: GHS {op.revenue_per_unit?.toFixed(2) || '0.00'}
+              </div>
+              <div style={{ marginTop: 4, fontSize: 13, color: '#718096' }}>
+                Inventory Health: {op.inventory_health?.toFixed(1) || '0.0'}
+              </div>
+              <div style={{ marginTop: 8, fontSize: 16, fontWeight: 700, color: op.potential > 50 ? '#48bb78' : '#ed8936' }}>
+                Potential: {op.potential.toFixed(1)}
+              </div>
             </div>
-          </div>
-          <div style={{ padding: 16, background: '#ebf8ff', borderRadius: 8, border: '1px solid #bee3f8' }}>
-            <div style={{ fontWeight: 700, color: '#2b6cb0' }}>📍 Priority 2</div>
-            <div style={{ marginTop: 8, fontSize: 14, color: '#2d3748' }}>
-              <strong>{opportunities.length > 1 ? opportunities[1]?.branch : 'N/A'}</strong>
-              <p style={{ fontSize: 13, color: '#4a5568', marginTop: 4 }}>
-                Strong performance with room for growth. Optimize inventory and marketing.
-              </p>
-            </div>
-          </div>
-          <div style={{ padding: 16, background: '#fffaf0', borderRadius: 8, border: '1px solid #fbd38d' }}>
-            <div style={{ fontWeight: 700, color: '#9c4221' }}>📍 Priority 3</div>
-            <div style={{ marginTop: 8, fontSize: 14, color: '#2d3748' }}>
-              <strong>{opportunities.length > 2 ? opportunities[2]?.branch : 'N/A'}</strong>
-              <p style={{ fontSize: 13, color: '#4a5568', marginTop: 4 }}>
-                Consider operational improvements and targeted marketing to boost performance.
-              </p>
-            </div>
-          </div>
+          ))}
         </div>
       </div>
     </div>

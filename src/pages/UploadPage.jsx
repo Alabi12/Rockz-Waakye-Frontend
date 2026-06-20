@@ -1,5 +1,5 @@
 import React, { useState } from 'react'
-import { waakyeApi } from '../api/waakyeApi'
+import waakyeApi from '../api/waakyeApi'
 import toast from 'react-hot-toast'
 import { Upload, CheckCircle, FileText, Store, UtensilsCrossed, TrendingUp, Warehouse } from 'lucide-react'
 
