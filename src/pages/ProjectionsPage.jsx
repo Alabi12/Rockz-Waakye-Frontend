@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react'
-import { waakyeApi } from '../api/waakyeApi'
+import waakyeApi from '../api/waakyeApi'
 import {
   LineChart,
   Line,

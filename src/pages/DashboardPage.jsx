@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react'
-import { waakyeApi } from '../api/waakyeApi'
+import waakyeApi from '../api/waakyeApi'
 import StatsCards from '../components/Dashboard/StatsCards'
 import InventoryTable from '../components/Dashboard/InventoryTable'
 import { RefreshCw, TrendingUp, AlertCircle } from 'lucide-react'

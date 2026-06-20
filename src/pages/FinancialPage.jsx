@@ -1,13 +1,15 @@
 import React, { useState, useEffect } from 'react'
-import { waakyeApi } from '../api/waakyeApi'
+import waakyeApi from '../api/waakyeApi'
 import { 
   DollarSign, 
   TrendingUp, 
   TrendingDown, 
   PieChart,
   RefreshCw,
-  Download,
-  Calendar
+  Calendar,
+  Building2,
+  ChevronDown,
+  ChevronUp
 } from 'lucide-react'
 import {
   BarChart,
@@ -20,38 +22,101 @@ import {
   ResponsiveContainer,
   PieChart as RePieChart,
   Pie,
-  Cell
+  Cell,
+  LineChart,
+  Line,
+  ComposedChart,
+  Area
 } from 'recharts'
 
-const COLORS = ['#4299e1', '#48bb78', '#ed8936', '#fc8181', '#9f7aea']
+const COLORS = ['#4299e1', '#48bb78', '#ed8936', '#fc8181', '#9f7aea', '#f687b3']
 
 const FinancialPage = () => {
   const [branchId, setBranchId] = useState('1')
   const [period, setPeriod] = useState('monthly')
   const [profitLoss, setProfitLoss] = useState(null)
   const [balanceSheet, setBalanceSheet] = useState(null)
+  const [allBranchesPL, setAllBranchesPL] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
+  const [lastUpdated, setLastUpdated] = useState(null)
+  const [expandedBranches, setExpandedBranches] = useState([])
 
   const branches = [
     { id: '1', name: 'Branch A - Accra Mall' },
     { id: '2', name: 'Branch B - Madina Market' },
     { id: '3', name: 'Branch C - Tema Station' },
-    { id: '4', name: 'All Branches' },
+    { id: '4', name: '📊 All Branches (Consolidated)' },
   ]
 
   const fetchData = async () => {
     setLoading(true)
     setError(null)
     try {
-      const [plResponse, bsResponse] = await Promise.all([
-        waakyeApi.getProfitLoss(parseInt(branchId), period),
-        waakyeApi.getBalanceSheet(parseInt(branchId))
-      ])
-      setProfitLoss(plResponse.data)
-      setBalanceSheet(bsResponse.data)
+      // If "All Branches" is selected (id: 4)
+      if (parseInt(branchId) === 4) {
+        // Fetch data for each branch individually
+        const branchPromises = [1, 2, 3].map(id => 
+          waakyeApi.getProfitLoss(id, period).then(res => ({
+            branch_id: id,
+            branch_name: branches.find(b => parseInt(b.id) === id)?.name || `Branch ${id}`,
+            ...res.data
+          })).catch(err => ({
+            branch_id: id,
+            branch_name: branches.find(b => parseInt(b.id) === id)?.name || `Branch ${id}`,
+            error: true,
+            message: err.message
+          }))
+        )
+        
+        const results = await Promise.all(branchPromises)
+        setAllBranchesPL(results)
+        
+        // Calculate consolidated totals
+        const consolidated = {
+          total_revenue: results.reduce((sum, r) => sum + (r.total_revenue || 0), 0),
+          total_cogs: results.reduce((sum, r) => sum + (r.total_cogs || 0), 0),
+          total_expenses: results.reduce((sum, r) => sum + (r.total_expenses || 0), 0),
+          gross_profit: results.reduce((sum, r) => sum + (r.gross_profit || 0), 0),
+          net_profit: results.reduce((sum, r) => sum + (r.net_profit || 0), 0),
+          gross_margin: (results.reduce((sum, r) => sum + (r.gross_profit || 0), 0) / 
+                        results.reduce((sum, r) => sum + (r.total_revenue || 0), 0)) * 100 || 0,
+          net_margin: (results.reduce((sum, r) => sum + (r.net_profit || 0), 0) / 
+                      results.reduce((sum, r) => sum + (r.total_revenue || 0), 0)) * 100 || 0,
+          is_consolidated: true
+        }
+        setProfitLoss(consolidated)
+        
+        // Get balance sheet for all branches (simplified)
+        const bsPromises = [1, 2, 3].map(id => waakyeApi.getBalanceSheet(id))
+        const bsResults = await Promise.all(bsPromises)
+        const consolidatedBS = {
+          assets: {
+            cash: bsResults.reduce((sum, r) => sum + (r.data?.assets?.cash || 0), 0),
+            inventory: bsResults.reduce((sum, r) => sum + (r.data?.assets?.inventory || 0), 0),
+            kitchen_stock: bsResults.reduce((sum, r) => sum + (r.data?.assets?.kitchen_stock || 0), 0),
+            total_assets: bsResults.reduce((sum, r) => sum + (r.data?.assets?.total_assets || 0), 0)
+          },
+          liabilities: bsResults.reduce((sum, r) => sum + (r.data?.liabilities || 0), 0),
+          equity: bsResults.reduce((sum, r) => sum + (r.data?.equity || 0), 0),
+          total_liabilities_equity: bsResults.reduce((sum, r) => sum + (r.data?.total_liabilities_equity || 0), 0),
+          is_consolidated: true
+        }
+        setBalanceSheet(consolidatedBS)
+      } else {
+        // Single branch
+        const [plResponse, bsResponse] = await Promise.all([
+          waakyeApi.getProfitLoss(parseInt(branchId), period),
+          waakyeApi.getBalanceSheet(parseInt(branchId))
+        ])
+        setProfitLoss({ ...plResponse.data, is_consolidated: false })
+        setBalanceSheet({ ...bsResponse.data, is_consolidated: false })
+        setAllBranchesPL([])
+      }
+      
+      setLastUpdated(new Date())
     } catch (err) {
-      setError('Failed to load financial data')
+      setError('Failed to load financial data: ' + (err.response?.data?.detail || err.message))
       console.error(err)
     } finally {
       setLoading(false)
@@ -62,6 +127,14 @@ const FinancialPage = () => {
     fetchData()
   }, [branchId, period])
 
+  const toggleBranch = (branchId) => {
+    setExpandedBranches(prev =>
+      prev.includes(branchId)
+        ? prev.filter(id => id !== branchId)
+        : [...prev, branchId]
+    )
+  }
+
   if (loading) {
     return <div style={{ padding: 48, textAlign: 'center' }}>Loading financial data...</div>
   }
@@ -71,6 +144,7 @@ const FinancialPage = () => {
       <div className="card" style={{ textAlign: 'center', padding: 48 }}>
         <p style={{ color: '#fc8181' }}>{error}</p>
         <button className="btn btn-primary" onClick={fetchData} style={{ marginTop: 16 }}>
+          <RefreshCw size={16} />
           Retry
         </button>
       </div>
@@ -90,12 +164,20 @@ const FinancialPage = () => {
     { name: 'Expenses', value: profitLoss.total_expenses || 0 },
   ] : []
 
+  const isConsolidated = profitLoss?.is_consolidated || false
+
   return (
     <div>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 }}>
         <div>
-          <h2 style={{ fontSize: 24, fontWeight: 700, color: '#2d3748' }}>📊 Financial Reports</h2>
-          <p style={{ color: '#718096' }}>Profit & Loss, Balance Sheet, and Financial Analysis</p>
+          <h2 style={{ fontSize: 24, fontWeight: 700, color: '#2d3748' }}>
+            📊 Financial Reports
+            {isConsolidated && <span style={{ fontSize: 14, fontWeight: 'normal', color: '#4299e1', marginLeft: 12 }}>📊 Consolidated View</span>}
+          </h2>
+          <p style={{ color: '#718096' }}>
+            Profit & Loss, Balance Sheet, and Financial Analysis
+            {lastUpdated && <span style={{ marginLeft: 12, fontSize: 12 }}>Updated: {lastUpdated.toLocaleTimeString()}</span>}
+          </p>
         </div>
         <div style={{ display: 'flex', gap: 12 }}>
           <select
@@ -156,10 +238,10 @@ const FinancialPage = () => {
           </div>
           <div className="stat-card">
             <div className="stat-label">Net Profit</div>
-            <div className="stat-value" style={{ color: profitLoss.net_profit > 0 ? '#48bb78' : '#fc8181' }}>
-              GHS {profitLoss.net_profit?.toFixed(2) || '0.00'}
+            <div className="stat-value" style={{ color: (profitLoss.net_profit || 0) > 0 ? '#48bb78' : '#fc8181' }}>
+              GHS {(profitLoss.net_profit || 0).toFixed(2)}
             </div>
-            <div className={`stat-change ${profitLoss.net_profit > 0 ? 'positive' : 'negative'}`}>
+            <div className={`stat-change ${(profitLoss.net_profit || 0) > 0 ? 'positive' : 'negative'}`}>
               Net Margin: {profitLoss.net_margin?.toFixed(1)}%
             </div>
           </div>
@@ -219,10 +301,62 @@ const FinancialPage = () => {
         </div>
       </div>
 
+      {/* Branch Breakdown (when consolidated) */}
+      {isConsolidated && allBranchesPL.length > 0 && (
+        <div className="card" style={{ marginBottom: 24 }}>
+          <h3 className="card-title">🏪 Branch Breakdown</h3>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 16 }}>
+            {allBranchesPL.map((branch, index) => (
+              <div key={index} style={{ 
+                padding: 16, 
+                background: '#f7fafc', 
+                borderRadius: 8,
+                border: '1px solid #e2e8f0',
+                cursor: 'pointer'
+              }} onClick={() => toggleBranch(branch.branch_id)}>
+                <div style={{ fontWeight: 600, color: '#2d3748' }}>{branch.branch_name}</div>
+                <div style={{ fontSize: 14, color: '#4a5568', marginTop: 4 }}>
+                  Revenue: <span style={{ fontWeight: 600, color: '#48bb78' }}>
+                    GHS {branch.total_revenue?.toFixed(2) || '0.00'}
+                  </span>
+                </div>
+                <div style={{ fontSize: 14, color: '#4a5568' }}>
+                  Net Profit: <span style={{ fontWeight: 600, color: (branch.net_profit || 0) > 0 ? '#48bb78' : '#fc8181' }}>
+                    GHS {branch.net_profit?.toFixed(2) || '0.00'}
+                  </span>
+                </div>
+                <div style={{ fontSize: 13, color: '#718096', marginTop: 4 }}>
+                  Margin: {branch.net_margin?.toFixed(1) || 0}%
+                </div>
+                {expandedBranches.includes(branch.branch_id) && (
+                  <div style={{ marginTop: 8, paddingTop: 8, borderTop: '1px solid #e2e8f0' }}>
+                    <div style={{ fontSize: 13 }}>
+                      <span style={{ color: '#718096' }}>COGS:</span> GHS {branch.total_cogs?.toFixed(2) || '0.00'}
+                    </div>
+                    <div style={{ fontSize: 13 }}>
+                      <span style={{ color: '#718096' }}>Expenses:</span> GHS {branch.total_expenses?.toFixed(2) || '0.00'}
+                    </div>
+                    <div style={{ fontSize: 13 }}>
+                      <span style={{ color: '#718096' }}>Gross Profit:</span> GHS {branch.gross_profit?.toFixed(2) || '0.00'}
+                    </div>
+                  </div>
+                )}
+                <div style={{ marginTop: 6, fontSize: 11, color: '#a0aec0' }}>
+                  {expandedBranches.includes(branch.branch_id) ? 'Tap to collapse' : 'Tap to expand'}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
       {/* Balance Sheet */}
       {balanceSheet && (
         <div className="card">
-          <h3 className="card-title">Balance Sheet</h3>
+          <h3 className="card-title">
+            Balance Sheet
+            {balanceSheet.is_consolidated && <span style={{ fontSize: 13, fontWeight: 'normal', color: '#4299e1', marginLeft: 8 }}>(Consolidated)</span>}
+          </h3>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 24 }}>
             <div>
               <h4 style={{ color: '#4299e1', marginBottom: 12 }}>Assets</h4>
